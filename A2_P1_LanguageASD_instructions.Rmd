@@ -104,7 +104,23 @@ Make sure the variables are in the right format.
 Describe the characteristics of the two groups of participants and whether the two groups are well matched.
 
 ```{r descriptive stats, include = FALSE}
+train$SUBJ <- as.character(train$SUBJ)
+summary(train)
 
+# Checking gender balance in each diagnosis as well as mean age counted in months
+train %>%
+  subset(VISIT == 1) %>%
+  group_by(Diagnosis) %>%
+  dplyr::summarise("number" = n(), 
+                   "females" = sum(Gender == "F"), 
+                   "males" = sum(Gender == "M"),
+                   "AgeM" = mean(Age, na.rm = T),
+                   "verbal-IQ" = mean(ExpressiveLangRaw1),
+                   "non-verbal-IQ" = mean(MullenRaw1),
+                   "ADOS" = mean(ADOS1),
+                   "Caucasian" = sum(Ethnicity == 'White'),
+                   "Non Caucasian" = n() - sum(Ethnicity == 'White')))
+?summarise
 ```
 
 The sample included mostly young (<20) white males ...
@@ -122,6 +138,13 @@ Remember to plot the data first and then to run a statistical test.
 - Which variable(s) should be included as random factors?
 
 ```{r ex2, include = FALSE}
+
+ggplot(train, aes(VISIT, CHI_MLU, group = Diagnosis, color = Diagnosis))+
+  geom_smooth(method = lm)+
+  geom_point()
+  
+
+lmer(CHI_MLU ~ VISIT*Diagnosis) # Slope of visit will depend on diagnosis. Differ between ASD and TD.
 
 ```
 
