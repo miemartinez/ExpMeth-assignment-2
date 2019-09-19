@@ -78,7 +78,7 @@ Load necessary libraries : what will you need?
 
 ```{r Load Libraries, include = FALSE}
 library(pacman)
-p_load(tidyverse)
+p_load(tidyverse, lme4, lmerTest, MuMIn)
 ```
 
 ### Define your working directory and load the data
@@ -118,9 +118,14 @@ train %>%
                    "verbal-IQ" = mean(ExpressiveLangRaw1),
                    "non-verbal-IQ" = mean(MullenRaw1),
                    "ADOS" = mean(ADOS1),
-                   "Caucasian" = sum(Ethnicity == 'White'),
-                   "Non Caucasian" = n() - sum(Ethnicity == 'White')))
-?summarise
+                   "Caucasian" = sum(Ethnicity == "White"),
+                   "Non Caucasian" = n() - sum(Ethnicity == "White"),
+                   "socialization" = mean(Socialization1),
+                   "number-words" = mean(tokens_CHI),
+                   "unique-words" = mean(types_CHI),
+                   "mlu_chi" = mean(CHI_MLU),
+                   "mlu_mot" = mean(MOT_MLU))
+
 ```
 
 The sample included mostly young (<20) white males ...
@@ -138,20 +143,49 @@ Remember to plot the data first and then to run a statistical test.
 - Which variable(s) should be included as random factors?
 
 ```{r ex2, include = FALSE}
-
-ggplot(train, aes(VISIT, CHI_MLU, group = Diagnosis, color = Diagnosis))+
+# Plot showing average intercept and language development for each diagnosis
+plot1 <- ggplot(train, aes(VISIT, CHI_MLU, group = Diagnosis, color = Diagnosis))+
   geom_smooth(method = lm)+
-  geom_point()
-  
+  geom_point()+
+  labs(title = "Development of mean length of utterance for ASD and TD over visits") +
+  xlab("Visit") + ylab("Mean length utterance")
 
-lmer(CHI_MLU ~ VISIT*Diagnosis) # Slope of visit will depend on diagnosis. Differ between ASD and TD.
+# Plot showing individual language development for each diagnosis
+plot2 <- ggplot(train, aes(VISIT, CHI_MLU, group = SUBJ, color = Diagnosis))+
+  geom_smooth(method = lm, se = FALSE)+
+  facet_wrap(~Diagnosis)+
+  theme_minimal() +
+  labs(title = "Development of mean length of utterance for ASD and TD over visits") +
+  xlab("Visit") + ylab("Mean length utterance")
+
+# Slope of visit will depend on diagnosis. Differ between ASD and TD. (1|SUBJ) = every child is unique and their clusters of data are therefore different. Uniqueness is only related to the intercept. (0+VISIT|SUBJ) = Slope is different for each child.
+
+# Mixed effect model
+model1 <- lmerTest::lmer(data = train, CHI_MLU ~ VISIT*Diagnosis + (1|SUBJ) + (0+VISIT|SUBJ)) 
+
+# Null model without the interaction effect
+nullModel <- lmerTest::lmer(data = train, CHI_MLU ~ VISIT + Diagnosis + (1|SUBJ) + (0+VISIT|SUBJ))
 
 ```
 
 How would you evaluate whether the model is a good model?
 
 ```{r ex2 evaluate, include = FALSE}
+# Model coefficients for model 1 and null model
+summary(model1)
+summary(nullModel)
 
+# Checking normality of residuals
+qqnorm(residuals(model1))
+# Since they the residuals of the model are normally distributed the model complies to the assumption of normality of residuals.
+
+# Testing the model with analysis of variance
+anova(model1, nullModel)
+
+# Calculating marginal and conditional R-squared.
+r.squaredGLMM(model1)
+
+# From this we gather that there was a significant interaction effect of Diagnosis and visit on the mean length of utterance. However as can be seen from the calculation of R^2, variance of individual slopes and intercepts explains a lot more than just the interaction of diagnosis and visit. If we wanted to generalize the results to the general population this would cause problems.
 ```
 
 Not too good, right? Let's check whether a growth curve model is better.
@@ -165,7 +199,17 @@ First build the different models, then compare them to see which one is better.
 Exciting right? Let's check whether the model is doing an alright job at fitting the data. Plot the actual CHI_MLU data against the predictions of the model fitted(model). 
 
 ```{r}
+# Fitting model to the data
+df <- train
+df$fit <- predict(model1) # Making a new column with the predicted mlu based on the model
 
+# Predicted versus actual, points are actual datapoints, lines are predictions
+ggplot(df, aes(x = VISIT, y = CHI_MLU, group = SUBJ, color = Diagnosis)) +
+  geom_point(alpha = 0.5, position = position_jitter(w = 0.1, h = 0)) +
+  facet_wrap(~SUBJ) +
+  theme_minimal() +
+  geom_smooth(method = "lm", se = FALSE, size = 0.4, aes(y=fit)) +
+  labs(title = "Model prediction on current data")
 ```
 
 Now it's time to report our results.
@@ -182,11 +226,26 @@ Linguistic development of children MLU is affected by ... [COMPLETE]
 ### Hypothesis: Parental MLU changes: i) over time, ii) according to diagnosis
 
 ```{r ex3, include = FALSE}
+# Model 2 predicting parental mean length utterance assuming no interaction
+model2 <- lmer(data = train, MOT_MLU ~ VISIT + Diagnosis + (1|SUBJ) + (0 + VISIT|SUBJ))
+# Assuming that the intercept does not affect the slope
 
+# Model 3 predicting parental mean length utterance assuming interaction of visit and diagnosis
+model3 <- lmerTest::lmer(data = train, MOT_MLU ~ VISIT * Diagnosis + (1|SUBJ) + (0 + VISIT|SUBJ))
+
+# Summary of models
+summary(model2)
+summary(model3)
+
+# Comparison of models using anova
+anova(model2,model3) # model 3 doesn't explain more variance compared to model 2. 
+
+# Calculating the marginal and conditional R-squared
+r.squaredGLMM(model2)
 ```
 
-Parent MLU is affected by ... but probably not ...
-[REPORT THE RESULTS]
+The marginal R2 for adults shows that visit and diagnosis explains about 20 % of the variance where the conditional R2 includes the random effects and explains about 65%. This suggests that time and diagnosis can affect the Parent MLU but this might not be the only thing.
+
 
 ### Adding new variables (Exercise 4)
 
